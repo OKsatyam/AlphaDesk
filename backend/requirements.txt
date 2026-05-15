@@ -1,0 +1,47 @@
+# ===================================
+# FolioAI Backend — Phase 1
+# ===================================
+
+# API framework
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+
+# PDF parsing
+pymupdf==1.24.5
+pdfplumber==0.11.1
+
+# AI - embeddings (free, runs locally)
+sentence-transformers==3.0.1
+
+# AI - vector database
+chromadb==0.5.3
+
+# AI - LLM providers
+anthropic>=0.40.0
+groq>=0.9.0
+google-generativeai>=0.8.0
+
+# Data validation
+pydantic==2.7.4
+pydantic-settings==2.3.4
+
+# File handling
+python-multipart==0.0.9
+
+# HTTP client (for Phase 2 fetchers, install now)
+httpx==0.27.0
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Utilities
+tqdm==4.66.4
+loguru==0.7.2
+
+# HTML parsing (SEC EDGAR 10-K files are HTML)
+beautifulsoup4==4.12.3
+
+# PostgreSQL — chat sync (optional, enable by setting DATABASE_URL in .env)
+sqlalchemy[asyncio]==2.0.30
+asyncpg==0.29.0
+alembic==1.13.1

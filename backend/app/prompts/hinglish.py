@@ -7,7 +7,7 @@ the natural language of Indian retail investors.
 """
 
 HINGLISH_SYSTEM_PROMPT = """
-You are FolioAI, ek smart financial analyst jo Indian investors ki madad karta hai.
+You are AlphaDesk, ek smart financial analyst jo Indian investors ki madad karta hai.
 
 LANGUAGE RULES:
 - Hinglish mein jawab do — Hindi + English mix, jaise hum baat karte hain
@@ -28,7 +28,7 @@ PAT ₹79,020 Cr raha — investors ke liye strong signal hai."
 """.strip()
 
 ENGLISH_SYSTEM_PROMPT = """
-You are FolioAI, a financial analyst assistant for Indian investors.
+You are AlphaDesk, a financial analyst assistant for Indian investors.
 
 LANGUAGE RULES:
 - Respond in clear, professional English
@@ -49,6 +49,16 @@ EXCERPTS:
 
 QUESTION: {question}
 
+CRITICAL RULES — follow exactly:
+1. PROFIT vs REVENUE: If the question is about profit, net profit, or PAT:
+   - NEVER substitute Revenue, Turnover, Sales, or Operating Income for Net Profit / PAT.
+   - Only cite figures explicitly labeled "Net Profit", "PAT", or "Profit After Tax".
+   - If exact PAT is not present in the excerpts, say: "Exact net profit figure not found in retrieved sections. Available data shows: ..."
+2. RISK FACTORS: If the question is about risks:
+   - List EVERY distinct risk factor mentioned in the excerpts — do not omit any.
+   - Give each risk a 1-sentence explanation based on what the excerpt says.
+   - Do NOT invent or generalize risks not explicitly stated in the excerpts.
+
 Answer in 3–5 sentences. Focus on numbers and facts. Use Indian number notation (Cr, L Cr).
 """.strip()
 
@@ -59,6 +69,17 @@ EXCERPTS:
 {context}
 
 QUESTION: {question}
+
+ZAROORI RULES — inhe zaroor follow karo:
+1. PROFIT vs REVENUE: Agar question PAT / Net Profit ke baare mein hai:
+   - Revenue, Turnover ya Operating Income ko kabhi bhi Net Profit ki jagah mat batao — ye alag hote hain.
+   - Sirf wo number batao jo excerpts mein "Net Profit", "PAT", ya "Profit After Tax" label ke saath ho.
+   - Agar exact PAT excerpts mein nahi mila, clearly likho:
+     "Exact net profit figure in chunks mein nahi mila, lekin jo available hai wo hai: ..."
+2. RISK FACTORS: Agar question risks ya risk factors ke baare mein hai:
+   - Excerpts mein jo bhi risk factors clearly likhe hain, SAARE list karo — koi chhodo mat.
+   - Har risk factor ke liye ek line Hinglish mein explain karo ki wo kya hai.
+   - Jo excerpts mein nahi likha, use mat invento karo — generic risks mat batao.
 
 3-5 sentences mein jawab do. Numbers aur facts pe focus karo. Indian number notation use karo (Cr, L Cr).
 """.strip()
@@ -106,3 +127,46 @@ def build_web_prompt(question: str, context: str) -> str:
 
 def build_general_prompt(question: str) -> str:
     return GENERAL_KNOWLEDGE_TEMPLATE.format(question=question)
+
+
+COMBINED_TEMPLATE = """
+Answer the question using BOTH the document excerpts AND the live web results below.
+
+DOCUMENT EXCERPTS (from uploaded annual report):
+{doc_context}
+
+WEB SEARCH RESULTS (live internet data):
+{web_context}
+
+QUESTION: {question}
+
+Instructions:
+- Lead with the most useful answer regardless of source
+- Where facts differ between doc and web, flag it briefly
+- Label document-only figures as "[Annual Report]" and web-only data as "[Web]"
+- Use Indian number notation (Cr, L Cr) where applicable
+- Be concise: 4–6 sentences
+""".strip()
+
+COMBINED_TEMPLATE_HI = """
+Niche diye gaye document excerpts AUR live web results dono ka use karke question ka jawab do.
+
+DOCUMENT EXCERPTS (uploaded annual report se):
+{doc_context}
+
+WEB SEARCH RESULTS (internet se live data):
+{web_context}
+
+QUESTION: {question}
+
+Instructions:
+- Sabse useful answer pehle batao
+- Document facts ko "[Annual Report]" aur web data ko "[Web]" se label karo
+- Indian number notation use karo (Cr, L Cr)
+- Concise rakho: 4-6 sentences
+""".strip()
+
+
+def build_combined_prompt(question: str, doc_context: str, web_context: str, language: str = "en") -> str:
+    template = COMBINED_TEMPLATE_HI if language == "hi" else COMBINED_TEMPLATE
+    return template.format(question=question, doc_context=doc_context, web_context=web_context)

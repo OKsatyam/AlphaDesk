@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Paperclip, ChevronRight, Loader2, X, Languages, Download, Share2, FileText } from 'lucide-react';
+import { Send, Paperclip, ChevronRight, Loader2, X, Languages, Download, Share2, FileText, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession, signIn } from 'next-auth/react';
 import { CitationPill } from '@/components/CitationPill';
@@ -99,7 +99,8 @@ interface Message {
   metrics?: Metric[];
   risks?: Risk[];
   streaming?: boolean;
-  source?: 'document' | 'web' | 'llm';
+  source?: 'document' | 'web' | 'llm' | 'combined';
+  searchLimitHit?: boolean;
 }
 
 interface ChatPanelProps {
@@ -114,9 +115,10 @@ interface ChatPanelProps {
   initialDocId?: string;
   initialDocName?: string;
   restoredChat?: SavedChat;
+  onChatCreated?: (id: string) => void;
 }
 
-export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationClick, onCitationsUpdate, onRisksUpdate, prefillQuery, onPrefillConsumed, initialDocId, initialDocName, restoredChat }: ChatPanelProps) {
+export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationClick, onCitationsUpdate, onRisksUpdate, prefillQuery, onPrefillConsumed, initialDocId, initialDocName, restoredChat, onChatCreated }: ChatPanelProps) {
   const { data: session } = useSession();
   const [input, setInput] = useState('');
 
@@ -130,6 +132,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [lang, setLang] = useState<'en' | 'hi'>('en');
+  const [useWeb, setUseWeb] = useState(false);
   const [selectedModel, setSelectedModel] = useState<SelectedModel>({ provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' });
   const [uploadedDoc, setUploadedDoc] = useState<{
     document_id: string;
@@ -156,6 +159,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const isNewUploadRef = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -187,6 +191,8 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
       updated_at: Date.now(),
     };
     upsertChat(saved);
+    // Tell parent the chat ID so sidebar can highlight it
+    onChatCreated?.(chatIdRef.current);
     // Sync to DB if user is logged in (best-effort, non-blocking)
     if (session?.user?.email) {
       syncChatToDb(saved, session.user.email);
@@ -235,6 +241,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
       if (!res.ok) throw new Error((await res.json()).detail || 'Upload failed');
       const data = await res.json();
       timers.forEach(clearTimeout);
+      isNewUploadRef.current = true;
       setUploadedDoc({
         document_id: data.document_id,
         filename: data.filename,
@@ -269,7 +276,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = `FolioAI_${Date.now()}.pdf`; a.click();
+      a.href = url; a.download = `AlphaDesk_${Date.now()}.pdf`; a.click();
       URL.revokeObjectURL(url);
       toast.success('PDF downloaded');
     } catch {
@@ -299,17 +306,15 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
     }
   }
 
-  // ─── Send message with streaming ───────────────────────────────
-  const handleSend = useCallback(async () => {
-    setSummaryDismissed(true);
-    if (!input.trim() || isStreaming) return;
+  // ─── Core streaming engine ─────────────────────────────────────
+  const fireQuery = useCallback(async (question: string, docId: string | null) => {
+    if (isStreaming) return;
 
-    const userMsg: Message = { id: Date.now(), role: 'user', content: input };
+    const userMsg: Message = { id: Date.now(), role: 'user', content: question };
     const aiMsgId = Date.now() + 1;
     const aiMsg: Message = { id: aiMsgId, role: 'ai', content: '', citations: [], metrics: [], streaming: true };
 
     setMessages(prev => [...prev, userMsg, aiMsg]);
-    setInput('');
     setIsStreaming(true);
 
     const controller = new AbortController();
@@ -320,12 +325,13 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: userMsg.content,
-          document_id: uploadedDoc?.document_id ?? null,
+          question,
+          document_id: docId,
           top_k: 5,
           language: lang,
           provider: selectedModel.provider,
           model: selectedModel.model,
+          use_web: useWeb,
         }),
         signal: controller.signal,
       });
@@ -370,13 +376,16 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
             setMessages(prev => prev.map(m =>
               m.id === aiMsgId ? { ...m, metrics: payload.metrics } : m
             ));
+          } else if (payload.type === 'search_limit') {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsgId ? { ...m, searchLimitHit: true } : m
+            ));
           } else if (payload.type === 'risks') {
             setMessages(prev => prev.map(m =>
               m.id === aiMsgId ? { ...m, risks: payload.risks } : m
             ));
             onRisksUpdate?.(payload.risks);
           } else if (payload.type === 'done') {
-            // Apply INR formatting to final content
             setMessages(prev => prev.map(m =>
               m.id === aiMsgId
                 ? { ...m, streaming: false, content: formatInrInText(m.content) }
@@ -395,7 +404,23 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [input, isStreaming, uploadedDoc, lang]);
+  }, [isStreaming, lang, selectedModel, useWeb, onCitationsUpdate, onRisksUpdate]);
+
+  // Auto-summary on fresh upload
+  useEffect(() => {
+    if (!uploadedDoc || !isNewUploadRef.current) return;
+    isNewUploadRef.current = false;
+    fireQuery('Give me a brief overview of this company and its key financials from the document.', uploadedDoc.document_id);
+  }, [uploadedDoc]);
+
+  // ─── Send message with streaming ───────────────────────────────
+  const handleSend = useCallback(async () => {
+    setSummaryDismissed(true);
+    if (!input.trim() || isStreaming) return;
+    const question = input;
+    setInput('');
+    await fireQuery(question, uploadedDoc?.document_id ?? null);
+  }, [input, isStreaming, uploadedDoc, fireQuery]);
 
   function handleStop() {
     abortRef.current?.abort();
@@ -412,7 +437,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
           </div>
           <div className="min-w-0">
             <div className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-              {uploadedDoc ? uploadedDoc.filename.replace('.pdf', '') : 'FolioAI'}
+              {uploadedDoc ? uploadedDoc.filename.replace('.pdf', '') : 'AlphaDesk'}
             </div>
             <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
               {uploadedDoc ? 'Annual Report — Ready' : 'Upload a PDF or fetch a company to start'}
@@ -454,6 +479,21 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
           >
             <Languages className="w-3.5 h-3.5" />
             {lang === 'hi' ? 'Hinglish' : 'EN'}
+          </button>
+
+          {/* Internet toggle */}
+          <button
+            onClick={() => setUseWeb(w => !w)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+            style={{
+              backgroundColor: useWeb ? 'rgba(14,165,233,0.12)' : 'var(--bg-card)',
+              color: useWeb ? '#0EA5E9' : 'var(--text-secondary)',
+              border: `1px solid ${useWeb ? 'rgba(14,165,233,0.4)' : 'var(--border)'}`,
+            }}
+            title={useWeb ? 'Internet ON — answers use both document + live web' : 'Internet OFF — answers from document only'}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            {useWeb ? 'Web ON' : 'Web'}
           </button>
 
           <button
@@ -574,6 +614,13 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
                         >
                           🌐 From internet
                         </span>
+                      ) : msg.source === 'combined' ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: 'rgba(16,185,129,0.10)', color: '#10B981', border: '1px solid rgba(16,185,129,0.25)' }}
+                        >
+                          🌐+📄 Document + Web
+                        </span>
                       ) : (
                         <span
                           className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
@@ -582,6 +629,18 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
                           🤖 General knowledge
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {/* Search limit warning */}
+                  {!msg.streaming && msg.searchLimitHit && (
+                    <div className="flex items-start gap-2 px-1 mt-1">
+                      <span
+                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg leading-snug"
+                        style={{ backgroundColor: 'rgba(245,158,11,0.10)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}
+                      >
+                        ⚠️ Web search quota exhausted — Tavily free tier: 1,000 searches/month. Resets monthly. Answered from general knowledge instead.
+                      </span>
                     </div>
                   )}
                 </div>
@@ -597,7 +656,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
                 <div key={d} className="w-2 h-2 rounded-full" style={{ backgroundColor: '#0EA5E9', animation: `pulseDot 1.5s ease-in-out ${d}s infinite` }} />
               ))}
             </div>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>FolioAI is analyzing…</span>
+            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>AlphaDesk is analyzing…</span>
           </motion.div>
         )}
         <div ref={bottomRef} />

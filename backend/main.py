@@ -1,6 +1,7 @@
 import sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# AlphaDesk
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +10,7 @@ from app.config import settings
 from app.core.pipeline import ingest_document, query_document
 from app.core.retriever import retrieve_relevant_chunks
 from app.core.generator import generate_answer_stream, MODELS
-from app.core.web_search import search_web
+from app.core.web_search import search_web, SEARCH_LIMIT_SENTINEL
 from app.core.metrics_explainer import detect_metrics
 from app.core.india_formatter import reformat_numbers_in_text
 from app.models.document import QueryRequest, QueryResponse
@@ -20,7 +21,6 @@ from app.api.export import router as export_router
 from app.api.share import router as share_router
 from app.api.chats import router as chats_router
 from app.db.database import init_db
-from app.fetchers.nse_fo import fetch_option_chain, FoDataError
 from app.core.risk_tagger import tag_risks_from_citations
 from app.core.trends import get_company_trends, get_available_companies
 import shutil
@@ -88,6 +88,12 @@ async def startup_cleanup():
     removed = cleanup_old_chunks(max_age_hours=24)
     if removed:
         print(f"[startup] Cleaned up {removed} stale document(s) older than 24h")
+
+    # Pre-warm embedding model so first upload/fetch isn't slow (cold load = 10-20s)
+    from app.core.embedder import get_embedding_model
+    await asyncio.to_thread(get_embedding_model)
+    print("[startup] Embedding model ready")
+
     asyncio.create_task(_periodic_cleanup(interval_hours=6))
 
 
@@ -146,7 +152,7 @@ async def upload_document(
     market: str = "IN"
 ):
     """
-    Upload a PDF and ingest it into FolioAI.
+    Upload a PDF and ingest it into AlphaDesk.
     This triggers the full pipeline:
     parse → chunk → embed → store
     """
@@ -154,6 +160,11 @@ async def upload_document(
     # validate file is a PDF
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    # sanitize filename — strip path traversal (../../evil.py → evil.py)
+    safe_name = os.path.basename(file.filename).replace("..", "").strip()
+    if not safe_name or not safe_name.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     # enforce size cap — read into memory to measure, then write
     content = await file.read()
@@ -165,7 +176,7 @@ async def upload_document(
         )
 
     # save uploaded file to storage/uploads/
-    upload_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+    upload_path = os.path.join(settings.UPLOAD_DIR, safe_name)
     with open(upload_path, "wb") as buffer:
         buffer.write(content)
 
@@ -173,7 +184,7 @@ async def upload_document(
     document = await asyncio.to_thread(
         ingest_document,
         upload_path,
-        company_name,
+        company_name or safe_name.replace(".pdf", ""),
         filing_type,
         market,
     )
@@ -227,27 +238,156 @@ async def query_stream(request: QueryRequest):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    async def event_stream():
-        # Step 1: retrieve relevant chunks — run in thread pool (sync+CPU)
-        citations = await asyncio.to_thread(
-            retrieve_relevant_chunks,
-            request.question,
-            request.document_id,
-            request.top_k,
-        )
+    import re as _re
 
-        # Step 1b: if no citations found, decide fallback mode
-        web_context = ""
-        if not citations:
-            if request.document_id:
-                # Doc was specified but answer not found in it — try web search
-                web_context = await asyncio.to_thread(search_web, request.question)
-                answer_source = "web" if web_context else "llm"
-            else:
-                # No doc — general knowledge question
-                answer_source = "llm"
+    # Devanagari Unicode block U+0900–U+097F
+    _DEVANAGARI_RE = _re.compile(r'[ऀ-ॿ]')
+
+    # Romanized Hindi keyword sets — used when query is in Latin script.
+    _BROAD_KEYWORDS = {
+        "risk", "risks", "risk factor", "risk factors", "jokhim",
+        "debt", "karza", "borrow", "borrowing", "liability", "liabilities", "obligation",
+        "invest", "investment", "capital", "capex",
+    }
+    _PROFIT_KEYWORDS = {
+        "profit", "pat", "earnings", "net income", "labh", "munafa", "faida", "kamai",
+        "bottom line", "net profit",
+    }
+
+    # Hindi (Devanagari) → English retrieval query map.
+    # all-MiniLM-L6-v2 is English-trained; pure Devanagari embeddings are weak.
+    # Translate key financial terms so the secondary retrieval pass can match
+    # English document chunks properly.
+    _DEVA_TO_EN: list[tuple[str, str]] = [
+        ("मुनाफ", "profit net profit PAT"),
+        ("लाभ",   "profit earnings"),
+        ("फायदा", "profit earnings"),
+        ("कमाई",  "revenue income earnings"),
+        ("जोखिम", "risk risk factors"),
+        ("खतरा",  "risk"),
+        ("कर्ज",  "debt borrowings loan"),
+        ("उधार",  "debt loan"),
+        ("आय",    "revenue income"),
+        ("आमदनी", "revenue income"),
+        ("निवेश",  "investment capital"),
+        ("खर्च",  "expenses cost"),
+        ("बिक्री", "sales revenue"),
+        ("विकास",  "growth"),
+        ("लाभांश", "dividend"),
+        ("संपत्ति", "assets"),
+        ("देनदारी", "liabilities"),
+    ]
+
+    _q_lower = request.question.lower()
+    _has_devanagari = bool(_DEVANAGARI_RE.search(request.question))
+    _is_broad  = any(kw in _q_lower for kw in _BROAD_KEYWORDS)
+    _is_profit = any(kw in _q_lower for kw in _PROFIT_KEYWORDS)
+
+    # Devanagari → threshold must be very low (embedding model is English-trained).
+    # Broad/profit romanized queries → relaxed threshold (sections always exist in annual reports).
+    if _has_devanagari:
+        _threshold = 0.18
+    elif _is_broad or _is_profit:
+        _threshold = 0.30
+    else:
+        _threshold = 0.42
+
+    async def event_stream():
+        # Step 1: retrieve relevant chunks — only when a document is specified.
+        # Without document_id, skip ChromaDB entirely (avoid leaking other users' docs).
+        # document_id scoping is NEVER affected by query language or script.
+        if request.document_id:
+            citations = await asyncio.to_thread(
+                retrieve_relevant_chunks,
+                request.question,
+                request.document_id,
+                request.top_k,
+                _threshold,
+            )
+
+            # Step 1a: Devanagari supplementary pass — translate Hindi terms to English
+            # and re-retrieve so English-trained embeddings can match document chunks.
+            if _has_devanagari:
+                en_terms: list[str] = []
+                for deva_fragment, en_query in _DEVA_TO_EN:
+                    if deva_fragment in request.question:
+                        en_terms.append(en_query)
+                if en_terms:
+                    en_retrieval_query = " ".join(en_terms)
+                    extra = await asyncio.to_thread(
+                        retrieve_relevant_chunks,
+                        en_retrieval_query,
+                        request.document_id,
+                        request.top_k,
+                        0.30,
+                    )
+                    seen = {c.chunk_id for c in citations}
+                    for c in extra:
+                        if c.chunk_id not in seen:
+                            citations.append(c)
+                            seen.add(c.chunk_id)
+
+            # Step 1b: second-pass for profit queries — if retrieved chunks don't
+            # contain explicit PAT/net-profit text, re-query with PAT keywords so
+            # the LLM gets the right data instead of confusing Revenue for PAT.
+            if _is_profit or _has_devanagari:
+                _pat_kws = {"profit after tax", "pat", "net profit", "earnings", "profit for the year"}
+                _has_pat = any(
+                    any(kw in c.text_snippet.lower() for kw in _pat_kws)
+                    for c in citations
+                )
+                if not _has_pat:
+                    extra = await asyncio.to_thread(
+                        retrieve_relevant_chunks,
+                        "profit after tax PAT net profit earnings",
+                        request.document_id,
+                        request.top_k,
+                        0.28,
+                    )
+                    seen = {c.chunk_id for c in citations}
+                    for c in extra:
+                        if c.chunk_id not in seen:
+                            citations.append(c)
+                            seen.add(c.chunk_id)
         else:
+            citations = []
+
+        # Step 1b: decide answer source and whether to fetch web
+        web_context = ""
+        search_limit_hit = False
+        not_found_in_doc = False
+
+        if citations and request.use_web:
+            # RAG found results but user also wants live web — combine both
+            raw = await asyncio.to_thread(search_web, request.question)
+            if raw == SEARCH_LIMIT_SENTINEL:
+                search_limit_hit = True
+                answer_source = "document"   # fall back to doc-only
+            elif raw:
+                web_context = raw
+                answer_source = "combined"
+            else:
+                answer_source = "document"
+
+        elif citations:
             answer_source = "document"
+
+        else:
+            # No RAG results — try web if doc was specified OR user forced web
+            if request.document_id or request.use_web:
+                raw = await asyncio.to_thread(search_web, request.question)
+                if raw == SEARCH_LIMIT_SENTINEL:
+                    search_limit_hit = True
+                    not_found_in_doc = bool(request.document_id)
+                    answer_source = "not_found"
+                elif raw:
+                    web_context = raw
+                    answer_source = "web"
+                else:
+                    not_found_in_doc = bool(request.document_id)
+                    answer_source = "not_found" if request.document_id else "llm"
+            else:
+                answer_source = "llm"
 
         # Step 2: send citations first so the frontend can show them immediately
         citations_data = [
@@ -265,6 +405,16 @@ async def query_stream(request: QueryRequest):
 
         # Step 2b: tell the frontend where this answer comes from
         yield f"data: {json.dumps({'type': 'source', 'source': answer_source})}\n\n"
+
+        # Step 2c: if web search quota exhausted, notify frontend
+        if search_limit_hit:
+            yield f"data: {json.dumps({'type': 'search_limit', 'message': 'Web search quota exhausted. Tavily free tier: 1000 searches/month. Resets monthly. Answering from general knowledge instead.'})}\n\n"
+
+        # Step 2d: if doc was provided but no relevant content found anywhere, say so
+        if not_found_in_doc:
+            yield f"data: {json.dumps({'type': 'token', 'text': 'This topic doesn’t appear to be covered in the uploaded document. Try rephrasing your question, or ask about a topic that is discussed in the report.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
 
         # Step 3: stream answer tokens, accumulate for post-processing
         full_answer = ""
@@ -298,14 +448,6 @@ async def query_stream(request: QueryRequest):
         },
     )
 
-
-@app.get("/fo/{symbol}")
-async def get_fo_data(symbol: str):
-    """Fetch F&O data for a symbol from NSE."""
-    try:
-        return fetch_option_chain(symbol)
-    except FoDataError as e:
-        raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/trends/{company_name}")

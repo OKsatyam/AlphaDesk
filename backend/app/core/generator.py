@@ -13,7 +13,7 @@ Usage:
 from typing import Iterator, Optional
 from app.models.document import Citation, QueryResponse
 from app.config import settings
-from app.prompts.hinglish import get_system_prompt, build_rag_prompt, build_web_prompt, build_general_prompt
+from app.prompts.hinglish import get_system_prompt, build_rag_prompt, build_web_prompt, build_general_prompt, build_combined_prompt
 
 
 # ===================================
@@ -27,8 +27,8 @@ MODELS = {
         {"id": "gemma2-9b-it",             "label": "Gemma 2 9B",     "badge": "Free"},
     ],
     "gemini": [
-        {"id": "gemini-1.5-flash",         "label": "Gemini 1.5 Flash","badge": "Free"},
-        {"id": "gemini-1.5-flash-8b",      "label": "Gemini Flash 8B", "badge": "Free · Fastest"},
+        {"id": "gemini-flash-latest",      "label": "Gemini Flash",       "badge": "Free · Fast"},
+        {"id": "gemini-2.5-flash",         "label": "Gemini 2.5 Flash",   "badge": "Free · Smart"},
     ],
     "claude": [
         {"id": "claude-haiku-4-5-20251001","label": "Claude Haiku",   "badge": "Paid · Fast"},
@@ -86,16 +86,44 @@ def _stream_groq(prompt: str, system: str, model: str) -> Iterator[str]:
 
 def _stream_gemini(prompt: str, system: str, model: str) -> Iterator[str]:
     import google.generativeai as genai
+    from google.generativeai.types import BlockedPromptException, StopCandidateException
+
+    # key format check — Gemini keys always start with AIza
+    if not settings.GEMINI_API_KEY.startswith("AIza"):
+        yield "[Gemini error] Invalid API key format — Gemini keys start with 'AIza'. Check GEMINI_API_KEY in backend/.env"
+        return
+
     genai.configure(api_key=settings.GEMINI_API_KEY)
     full_prompt = f"{system}\n\n{prompt}"
-    response = genai.GenerativeModel(model or settings.GEMINI_MODEL).generate_content(
-        full_prompt,
-        generation_config={"temperature": 0.1, "max_output_tokens": 2048},
-        stream=True,
-    )
-    for chunk in response:
-        if chunk.text:
+
+    try:
+        response = genai.GenerativeModel(model or settings.GEMINI_MODEL).generate_content(
+            full_prompt,
+            generation_config={"temperature": 0.1, "max_output_tokens": 2048},
+            stream=True,
+        )
+        yielded_any = False
+        for chunk in response:
+            # safety block — finish_reason == SAFETY yields empty chunk.text
+            if not chunk.text:
+                try:
+                    finish = chunk.candidates[0].finish_reason if chunk.candidates else None
+                    if finish and finish.name == "SAFETY":
+                        yield "[Gemini] Response blocked by safety filter. Try rephrasing or switch to Groq."
+                        return
+                except Exception:
+                    pass
+                continue
+            yielded_any = True
             yield chunk.text
+
+        if not yielded_any:
+            yield "[Gemini] Empty response — query may have been filtered. Try rephrasing or switch to Groq."
+
+    except BlockedPromptException:
+        yield "[Gemini] Prompt blocked by safety filter. Try rephrasing or switch to Groq."
+    except StopCandidateException:
+        yield "[Gemini] Response stopped by safety filter. Try rephrasing or switch to Groq."
 
 
 _THINKING_MODELS = ("sonnet", "opus")  # haiku does not support thinking
@@ -174,7 +202,12 @@ def generate_answer_stream(
     system = get_system_prompt(language)
 
     # Build prompt based on mode
-    if citations:
+    if citations and web_context:
+        # Combined: both RAG chunks + live web results
+        doc_context = _build_context(citations)
+        prompt = build_combined_prompt(question, doc_context, web_context, language)
+        claude_context = doc_context + "\n\nWEB DATA:\n" + web_context
+    elif citations:
         context = _build_context(citations)
         prompt = build_rag_prompt(question, context, language)
         claude_context = context
@@ -196,6 +229,9 @@ def generate_answer_stream(
             if not settings.GEMINI_API_KEY:
                 yield "Gemini API key not configured. Get a free key at aistudio.google.com and add GEMINI_API_KEY to backend/.env"
                 return
+            if not settings.GEMINI_API_KEY.startswith("AIza"):
+                yield "Gemini API key invalid format — must start with 'AIza'. Check GEMINI_API_KEY in backend/.env"
+                return
             yield from _stream_gemini(prompt, system, model or settings.GEMINI_MODEL)
 
         elif provider == "claude":
@@ -209,14 +245,30 @@ def generate_answer_stream(
 
     except Exception as e:
         err = str(e)
-        if "credit" in err.lower() or "billing" in err.lower():
-            yield f"[{provider.upper()} error] No credits — switch to a free provider (Groq or Gemini)."
-        elif "api_key" in err.lower() or "authentication" in err.lower():
-            yield f"[{provider.upper()} error] Invalid API key — check backend/.env"
-        elif "rate" in err.lower():
-            yield f"[{provider.upper()} error] Rate limit hit — wait a moment and try again."
+        err_lower = err.lower()
+        label = provider.upper()
+
+        if "resource_exhausted" in err_lower or "quota" in err_lower or "429" in err:
+            if provider == "gemini":
+                yield (
+                    f"[{label}] Rate limit hit — Gemini free tier: 15 req/min, 1,500 req/day. "
+                    "Wait 1 minute and retry, or switch to Groq (unlimited free)."
+                )
+            else:
+                yield f"[{label}] Rate limit hit — wait a moment and try again."
+        elif "user_location_not_supported" in err_lower or "not supported in your region" in err_lower:
+            yield (
+                f"[{label}] Gemini not available in your region. "
+                "Switch to Groq (works globally) in the model selector."
+            )
+        elif "credit" in err_lower or "billing" in err_lower:
+            yield f"[{label}] No credits — switch to a free provider (Groq or Gemini)."
+        elif "api_key" in err_lower or "authentication" in err_lower or "api key not valid" in err_lower:
+            yield f"[{label}] Invalid API key — check backend/.env"
+        elif "rate" in err_lower:
+            yield f"[{label}] Rate limit hit — wait a moment and try again."
         else:
-            yield f"[{provider.upper()} error] {err[:120]}"
+            yield f"[{label}] {err[:150]}"
 
 
 # ===================================

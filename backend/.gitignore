@@ -1,0 +1,24 @@
+# secrets
+.env
+
+# python virtual environment
+.venv/
+venv/
+
+# python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# storage — never commit PDFs or vector DB
+storage/uploads/
+storage/chroma_db/
+
+# os
+.DS_Store
+Thumbs.db
+
+# dev scripts output
+test_report.pdf
