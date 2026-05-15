@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     # ===================================
     APP_NAME: str = "AlphaDesk"
     APP_VERSION: str = "0.1.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
+    FRONTEND_URL: str = ""  # set in prod: https://your-app.vercel.app
 
     # ===================================
     # LLM providers (use whichever you have a key for)
@@ -24,7 +25,7 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-flash-latest"
 
     # Default provider: "groq" | "gemini" | "claude"
     DEFAULT_LLM_PROVIDER: str = "groq"
