@@ -43,9 +43,14 @@ app = FastAPI(
 # CORS — allows frontend to talk
 # to backend (needed in Phase 3)
 # ===================================
+_origins = (
+    [settings.FRONTEND_URL, "http://localhost:3000"]
+    if settings.FRONTEND_URL
+    else ["*"]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
