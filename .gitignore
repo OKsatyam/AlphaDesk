@@ -1,0 +1,37 @@
+# secrets
+.env
+backend/.env
+frontend/.env.local
+frontend/.env*.local
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+backend/venv/
+
+# storage (large files, local only)
+backend/storage/uploads/
+backend/storage/chroma_db/
+backend/storage/shares/
+
+# node
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# claude code (local dev tool)
+.claude/
+frontend/.claude/
+
+# os
+.DS_Store
+Thumbs.db
+
+# dev artifacts
+test_report.pdf
+context.md
+backend/tmp_check_models.py
+backend/create_test_pdf.py
