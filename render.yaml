@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: alphadesk-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    disk:
+      name: alphadesk-storage
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: CHROMA_DB_PATH
+        value: /var/data/chroma_db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: DEBUG
+        value: false
+      - key: DEFAULT_LLM_PROVIDER
+        value: groq
+      - key: EMBEDDING_MODEL
+        value: all-MiniLM-L6-v2
+      - key: CHROMA_COLLECTION_NAME
+        value: folioai_documents
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
