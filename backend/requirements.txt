@@ -43,6 +43,9 @@ loguru==0.7.2
 # HTML parsing (SEC EDGAR 10-K files are HTML)
 beautifulsoup4==4.12.3
 
+# PDF export
+reportlab>=4.0.0
+
 # PostgreSQL — chat sync (optional, enable by setting DATABASE_URL in .env)
 sqlalchemy[asyncio]==2.0.30
 asyncpg>=0.29.0
