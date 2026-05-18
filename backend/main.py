@@ -1,6 +1,3 @@
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 # AlphaDesk
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -93,11 +90,6 @@ async def startup_cleanup():
     removed = cleanup_old_chunks(max_age_hours=24)
     if removed:
         print(f"[startup] Cleaned up {removed} stale document(s) older than 24h")
-
-    # Pre-warm embedding model so first upload/fetch isn't slow (cold load = 10-20s)
-    from app.core.embedder import get_embedding_model
-    await asyncio.to_thread(get_embedding_model)
-    print("[startup] Embedding model ready")
 
     asyncio.create_task(_periodic_cleanup(interval_hours=6))
 
@@ -468,3 +460,10 @@ async def get_trends(company_name: str):
 async def list_companies_with_trends():
     """List all companies that have ingested documents."""
     return {"companies": get_available_companies()}
+
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -10,7 +10,9 @@ uvicorn[standard]==0.30.1
 pymupdf==1.24.5
 pdfplumber==0.11.1
 
-# AI - embeddings (free, runs locally)
+# AI - embeddings (CPU-only torch — no CUDA, fits in 512MB free tier)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers==3.0.1
 
 # AI - vector database
@@ -22,8 +24,8 @@ groq>=0.9.0
 google-generativeai>=0.8.0
 
 # Data validation
-pydantic==2.7.4
-pydantic-settings==2.3.4
+pydantic>=2.7.4
+pydantic-settings>=2.3.4
 
 # File handling
 python-multipart==0.0.9
@@ -41,7 +43,10 @@ loguru==0.7.2
 # HTML parsing (SEC EDGAR 10-K files are HTML)
 beautifulsoup4==4.12.3
 
+# PDF export
+reportlab>=4.0.0
+
 # PostgreSQL — chat sync (optional, enable by setting DATABASE_URL in .env)
 sqlalchemy[asyncio]==2.0.30
-asyncpg==0.29.0
+asyncpg>=0.29.0
 alembic==1.13.1
