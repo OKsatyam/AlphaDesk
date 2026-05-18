@@ -91,11 +91,6 @@ async def startup_cleanup():
     if removed:
         print(f"[startup] Cleaned up {removed} stale document(s) older than 24h")
 
-    # Pre-warm embedding model so first upload/fetch isn't slow (cold load = 10-20s)
-    from app.core.embedder import get_embedding_model
-    await asyncio.to_thread(get_embedding_model)
-    print("[startup] Embedding model ready")
-
     asyncio.create_task(_periodic_cleanup(interval_hours=6))
 
 
