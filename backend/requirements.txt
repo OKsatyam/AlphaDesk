@@ -43,5 +43,5 @@ beautifulsoup4==4.12.3
 
 # PostgreSQL — chat sync (optional, enable by setting DATABASE_URL in .env)
 sqlalchemy[asyncio]==2.0.30
-asyncpg==0.29.0
+asyncpg>=0.29.0
 alembic==1.13.1
