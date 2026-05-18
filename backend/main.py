@@ -1,6 +1,3 @@
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 # AlphaDesk
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -468,3 +465,10 @@ async def get_trends(company_name: str):
 async def list_companies_with_trends():
     """List all companies that have ingested documents."""
     return {"companies": get_available_companies()}
+
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
