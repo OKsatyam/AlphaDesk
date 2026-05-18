@@ -23,7 +23,7 @@ AI-powered financial document intelligence. RAG system — upload or auto-fetch 
 | HTML parsing | BeautifulSoup4 (SEC EDGAR 10-K files are HTML) |
 | HTTP client | httpx |
 | Database | PostgreSQL via asyncpg (Neon free tier — chat sync) |
-| Deployment | Vercel (frontend) + Railway (backend) |
+| Deployment | Vercel (frontend) + Render (backend) |
 
 ---
 
@@ -314,14 +314,29 @@ Logged-in users: chats synced to PostgreSQL via `/chats/*` API. Set `DATABASE_UR
 
 ---
 
+## Completed Post-Phase 9 (Session 5 — 2026-05-18: Deployment)
+
+- **Git setup** — `.gitignore` added (excludes `.env`, `frontend/.env.local`, `storage/`, `.claude/`, `node_modules`); full codebase committed (91 files); pushed to `https://github.com/OKsatyam/AlphaDesk`
+- **Monorepo structure** — single repo, Vercel points to `frontend/`, Render points to `backend/`
+- **Railway → Render migration** — Railway trial expired; switched to Render free tier + $0.25/mo persistent disk
+- **render.yaml** — at repo root; `rootDir: backend`, `startCommand: python main.py`, 1GB disk at `/var/data`
+- **Python 3.11.9 pinned** — `runtime.txt` + `.python-version` at root and backend/; Render was defaulting to 3.14 (pydantic-core/asyncpg had no wheels)
+- **CPU-only torch** — removed CUDA torch (2GB+); build cmd: `pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt`; prevents OOM on 512MB free tier
+- **Embedding model pre-warm removed** — was blocking port bind before Render timeout; now loads lazily on first request
+- **Missing deps added** — `reportlab>=4.0.0` added to requirements.txt
+- **CORS locked** — `FRONTEND_URL` env var controls allowed origins; `*` only in dev
+- **Backend live** — `https://alphadesk-c5fa.onrender.com` — health ✅, all 3 LLM providers ✅
+- **Frontend live** — `https://alpha-desk-eight.vercel.app` — landing page ✅, Google auth ✅
+- **Google OAuth** — production domain added to authorized origins + redirect URIs
+
 ## Remaining Work
 
-- GitHub + Twitter OAuth — NextAuth already wired (`route.ts`); just need env vars (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`)
-- Deployment — Vercel (frontend) + Railway (backend)
+- **ChromaDB disk not mounted** — Render reports path `/opt/render/project/src/backend/storage/chroma_db` not `/var/data/chroma_db`; disk env vars (`CHROMA_DB_PATH`, `UPLOAD_DIR`) not taking effect; documents wipe on redeploy — needs fix
+- **feat/deployment-config branch** — not yet merged to master; merge after disk fix confirmed working
+- GitHub + Twitter OAuth — NextAuth already wired (`route.ts`); just need env vars
 - BSE fuzzy match — short names ("TCS", "Reliance") may match wrong company; fix with `rapidfuzz` `token_set_ratio`
 - NSE annual report Akamai — warm-up works on local IPs; brittle on cloud IPs; would need Playwright for production reliability
 - Alembic migrations — local dev uses `create_all`; production needs proper migration files
-- Presentation report — user mentioned upcoming project presentation
 
 ---
 
@@ -331,7 +346,7 @@ Logged-in users: chats synced to PostgreSQL via `/chats/*` API. Set `DATABASE_UR
 - Always activate venv before running Python: `venv\Scripts\activate`
 - If port 8000 already in use after restart: `netstat -ano | findstr :8000` → `taskkill /PID <pid> /F`
 - Frontend runs on port 3000, backend on port 8000
-- CORS is open (`allow_origins=["*"]`) — lock down before production
+- CORS locked to `FRONTEND_URL` env var in production; `*` only when `FRONTEND_URL` is empty (dev)
 - SEC 10-K files are HTML not PDF — pipeline handles both via `parse_document()`
 - NSE annual report fetcher needs 3-step warm-up (home → filings page × 2) for Akamai cookies
 - BSE headers must include Referer + Origin or get 403
