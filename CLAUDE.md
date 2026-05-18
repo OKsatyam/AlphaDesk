@@ -327,7 +327,7 @@ Logged-in users: chats synced to PostgreSQL via `/chats/*` API. Set `DATABASE_UR
 - **CORS locked** — `FRONTEND_URL` env var controls allowed origins; `*` only in dev
 - **Backend live** — `https://alphadesk-c5fa.onrender.com` — health ✅, all 3 LLM providers ✅
 - **Frontend live** — `https://alpha-desk-eight.vercel.app` — landing page ✅, Google auth ✅
-- **Google OAuth** — production domain added to authorized origins + redirect URIs
+- **Google OAuth config** — production domain added to authorized origins + redirect URIs in Google Console (auth flow not yet verified manually)
 
 ## Remaining Work
 
