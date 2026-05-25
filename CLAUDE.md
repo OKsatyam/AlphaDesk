@@ -337,6 +337,12 @@ Logged-in users: chats synced to PostgreSQL via `/chats/*` API. Set `DATABASE_UR
 - BSE fuzzy match — short names ("TCS", "Reliance") may match wrong company; fix with `rapidfuzz` `token_set_ratio`
 - NSE annual report Akamai — warm-up works on local IPs; brittle on cloud IPs; would need Playwright for production reliability
 - Alembic migrations — local dev uses `create_all`; production needs proper migration files
+- **Chunking improvements (planned, not urgent):**
+  - #1 Sentence-boundary overlap — never split mid-sentence (easy, ~30 min)
+  - #2 Structure-aware chunking — split on headings, keep tables intact (medium, big win for financials)
+  - #3 Semantic chunking — split on topic shift using embedding similarity (medium, best retrieval)
+  - #4 Parent-child chunking — retrieve small chunks, send large context to LLM (hard)
+  - Current: fixed 400-word / 80-word overlap word chunking (config.py:53-55)
 
 ---
 
