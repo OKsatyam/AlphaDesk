@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, Suspense } from 'react';
+import { useState, useCallback, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Sidebar } from '@/components/chat/Sidebar';
 import { ChatPanel } from '@/components/chat/ChatPanel';
@@ -27,6 +27,26 @@ function ChatPageInner() {
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [rightPanelWidth, setRightPanelWidth] = useState(420);
+  const dragStartX = useRef<number | null>(null);
+  const dragStartW = useRef<number>(420);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    dragStartX.current = e.clientX;
+    dragStartW.current = rightPanelWidth;
+    const onMove = (mv: MouseEvent) => {
+      if (dragStartX.current === null) return;
+      const delta = dragStartX.current - mv.clientX;
+      setRightPanelWidth(Math.min(700, Math.max(280, dragStartW.current + delta)));
+    };
+    const onUp = () => {
+      dragStartX.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [rightPanelWidth]);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
   const [sourceCitations, setSourceCitations] = useState<Citation[]>([]);
   const [risks, setRisks] = useState<Risk[]>([]);
@@ -90,6 +110,8 @@ function ChatPageInner() {
         activeCitation={activeCitation}
         sourceCitations={sourceCitations}
         risks={risks}
+        width={rightPanelWidth}
+        onDragStart={handleDragStart}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Link as LinkIcon, StickyNote, AlertTriangle, FileSearch, Loader2, ImageOff, ZoomIn, ZoomOut } from 'lucide-react';
+import { FileText, Link as LinkIcon, StickyNote, AlertTriangle, FileSearch, Loader2, ImageOff, ZoomIn, ZoomOut, Maximize2, X } from 'lucide-react';
 
 const TABS = [
   { id: 'document', label: 'Document', icon: FileText },
@@ -32,6 +32,8 @@ interface RightPanelProps {
   activeCitation: Citation | null;
   sourceCitations?: Citation[];
   risks?: Risk[];
+  width?: number;
+  onDragStart?: (e: React.MouseEvent) => void;
 }
 
 const SEVERITY_COLOR = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
@@ -44,12 +46,13 @@ type PageState =
   | { status: 'loaded'; image: string; totalPages: number }
   | { status: 'error'; message: string };
 
-export function RightPanel({ isOpen, activeCitation, sourceCitations = [], risks = [] }: RightPanelProps) {
+export function RightPanel({ isOpen, activeCitation, sourceCitations = [], risks = [], width = 420, onDragStart }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('document');
   const [notes, setNotes] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageState, setPageState] = useState<PageState>({ status: 'idle' });
   const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const fetchPage = useCallback(async (documentId: string, pageNum: number) => {
     setPageState({ status: 'loading' });
@@ -88,10 +91,52 @@ export function RightPanel({ isOpen, activeCitation, sourceCitations = [], risks
   if (!isOpen) return null;
 
   return (
+    <>
+    {/* Fullscreen PDF modal */}
+    {isFullscreen && pageState.status === 'loaded' && (
+      <div
+        className="fixed inset-0 z-50 flex flex-col"
+        style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
+        onClick={() => setIsFullscreen(false)}
+      >
+        <div className="flex items-center justify-between px-6 py-3 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <span className="text-sm font-medium text-white">p.{currentPage} — {activeCitation?.section || 'Document'}</span>
+          <button onClick={() => setIsFullscreen(false)} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <X className="w-5 h-5 text-white" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-6" onClick={e => e.stopPropagation()}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:image/png;base64,${pageState.image}`}
+            alt={`Page ${currentPage}`}
+            style={{ maxWidth: '100%', width: '100%', height: 'auto', display: 'block', borderRadius: '8px', margin: '0 auto' }}
+          />
+        </div>
+        <div className="flex items-center justify-center gap-4 px-6 py-3 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <button onClick={() => goToPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1}
+            className="text-sm px-4 py-2 rounded-lg text-white border border-white/20 hover:bg-white/10 disabled:opacity-30 transition-colors">
+            ← Prev
+          </button>
+          <span className="text-sm font-mono text-white">{currentPage} / {pageState.totalPages}</span>
+          <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= pageState.totalPages}
+            className="text-sm px-4 py-2 rounded-lg text-white border border-white/20 hover:bg-white/10 disabled:opacity-30 transition-colors">
+            Next →
+          </button>
+        </div>
+      </div>
+    )}
     <aside
-      className="flex flex-col h-full shrink-0 w-80 overflow-hidden"
-      style={{ backgroundColor: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)' }}
+      className="flex flex-col h-full shrink-0 overflow-hidden relative"
+      style={{ width, backgroundColor: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)' }}
     >
+      {/* Drag handle */}
+      <div
+        onMouseDown={onDragStart}
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500 transition-colors z-10"
+        style={{ backgroundColor: 'transparent' }}
+        title="Drag to resize"
+      />
       {/* Tab bar */}
       <div className="flex border-b" style={{ borderColor: 'var(--border)' }}>
         {TABS.map(tab => (
@@ -136,20 +181,33 @@ export function RightPanel({ isOpen, activeCitation, sourceCitations = [], risks
                     {activeCitation.section || 'Document'}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-mono" style={{ color: '#10B981' }}>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-mono mr-1" style={{ color: '#10B981' }}>
                     {(activeCitation.relevance_score * 100).toFixed(0)}%
                   </span>
-                  {/* zoom controls */}
                   <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}
                     className="p-1 rounded hover:opacity-70 transition-opacity"
+                    title="Zoom out"
                     style={{ color: 'var(--text-secondary)' }}>
                     <ZoomOut className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => setZoom(z => Math.min(3, z + 0.25))}
+                  <button onClick={() => setZoom(z => Math.min(4, z + 0.25))}
                     className="p-1 rounded hover:opacity-70 transition-opacity"
+                    title="Zoom in"
                     style={{ color: 'var(--text-secondary)' }}>
                     <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => setZoom(1)}
+                    className="px-1.5 py-0.5 rounded text-xs font-mono hover:opacity-70 transition-opacity"
+                    title="Fit width"
+                    style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                    fit
+                  </button>
+                  <button onClick={() => setIsFullscreen(true)}
+                    className="p-1 rounded hover:opacity-70 transition-opacity ml-0.5"
+                    title="Fullscreen"
+                    style={{ color: 'var(--text-secondary)' }}>
+                    <Maximize2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -163,12 +221,18 @@ export function RightPanel({ isOpen, activeCitation, sourceCitations = [], risks
                   </div>
                 )}
                 {pageState.status === 'loaded' && (
-                  <div className="p-2" style={{ transformOrigin: 'top center' }}>
+                  <div style={{ padding: '8px', minWidth: zoom > 1 ? `${zoom * 100}%` : undefined }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`data:image/png;base64,${pageState.image}`}
                       alt={`Page ${currentPage}`}
-                      style={{ width: `${zoom * 100}%`, maxWidth: 'none', display: 'block', borderRadius: '4px' }}
+                      style={{
+                        width: zoom === 1 ? '100%' : `${zoom * 100}%`,
+                        maxWidth: zoom === 1 ? '100%' : 'none',
+                        height: 'auto',
+                        display: 'block',
+                        borderRadius: '4px',
+                      }}
                     />
                   </div>
                 )}
@@ -308,5 +372,6 @@ export function RightPanel({ isOpen, activeCitation, sourceCitations = [], risks
         </div>
       )}
     </aside>
+    </>
   );
 }
