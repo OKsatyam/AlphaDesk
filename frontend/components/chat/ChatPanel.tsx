@@ -160,6 +160,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isNewUploadRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -420,6 +421,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
     if (!input.trim() || isStreaming) return;
     const question = input;
     setInput('');
+    if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
     await fireQuery(question, uploadedDoc?.document_id ?? null);
   }, [input, isStreaming, uploadedDoc, fireQuery]);
 
@@ -688,13 +690,19 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
           />
 
           <textarea
+            ref={textareaRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => {
+              setInput(e.target.value);
+              const el = e.target;
+              el.style.height = 'auto';
+              el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+            }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             placeholder={lang === 'hi' ? 'Kuch bhi pucho document ke baare mein...' : 'Ask anything about the document…'}
             rows={1}
             className="flex-1 bg-transparent text-sm outline-none resize-none leading-relaxed"
-            style={{ color: 'var(--text-primary)', maxHeight: '120px', overflowY: 'auto' }}
+            style={{ color: 'var(--text-primary)', maxHeight: '160px', overflowY: 'auto', lineHeight: '1.5' }}
           />
 
           <div className="flex items-center gap-2 shrink-0">

@@ -14,7 +14,6 @@ const LIBRARY: { name: string; query?: string; exchange: 'BSE' | 'NSE' | 'NASDAQ
   { name: 'TCS',                 exchange: 'BSE', sector: 'Technology', color: '#1FD4A0', query: '532540' },
   { name: 'HDFC Bank',           exchange: 'BSE', sector: 'Banking',    color: '#A78BFA', query: '500180' },
   { name: 'Infosys',             exchange: 'BSE', sector: 'Technology', color: '#60A5FA', query: '500209' },
-  { name: 'Tata Motors',         exchange: 'BSE', sector: 'Automobile', color: '#F472B6', query: '544569' },
   { name: 'ICICI Bank',          exchange: 'BSE', sector: 'Banking',    color: '#34D399', query: '532174' },
   { name: 'Bajaj Finance',       exchange: 'BSE', sector: 'NBFC',       color: '#E8A020', query: '500034' },
   { name: 'Wipro',               exchange: 'BSE', sector: 'Technology', color: '#1FD4A0', query: '507685' },

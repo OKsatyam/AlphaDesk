@@ -93,6 +93,12 @@ async def startup_cleanup():
 
     asyncio.create_task(_periodic_cleanup(interval_hours=6))
 
+    # Warm embedding model in background — eliminates cold start on first query
+    import threading
+    from app.core.embedder import get_embedding_model
+    threading.Thread(target=get_embedding_model, daemon=True).start()
+    print("[startup] Embedding model warming up in background...")
+
 
 # ===================================
 # Routes
