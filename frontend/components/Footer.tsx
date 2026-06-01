@@ -20,7 +20,7 @@ export function Footer() {
                 className="text-lg font-bold"
                 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}
               >
-                Folio<span style={{ color: 'var(--primary)' }}>AI</span>
+                Alpha<span style={{ color: 'var(--primary)' }}>Desk</span>
               </span>
             </Link>
             <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>

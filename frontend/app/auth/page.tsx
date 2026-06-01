@@ -76,7 +76,7 @@ export default function AuthPage() {
               className="text-xl font-bold"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}
             >
-              Folio<span style={{ color: 'var(--primary)' }}>AI</span>
+              Alpha<span style={{ color: 'var(--primary)' }}>Desk</span>
             </span>
           </div>
         </div>
@@ -135,7 +135,7 @@ export default function AuthPage() {
               className="text-xl font-bold"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}
             >
-              Folio<span style={{ color: 'var(--primary)' }}>AI</span>
+              Alpha<span style={{ color: 'var(--primary)' }}>Desk</span>
             </span>
           </div>
 

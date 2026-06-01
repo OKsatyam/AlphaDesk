@@ -45,7 +45,7 @@ export function Navbar() {
             className="text-xl font-bold tracking-tight"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}
           >
-            Folio<span style={{ color: 'var(--primary)' }}>AI</span>
+            Alpha<span style={{ color: 'var(--primary)' }}>Desk</span>
           </span>
         </Link>
 
