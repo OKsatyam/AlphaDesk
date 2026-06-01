@@ -37,6 +37,7 @@ class Chunk(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     document_id: Optional[str] = None
+    company_name: Optional[str] = None  # used to scope web search queries
     top_k: int = Field(default=5, ge=1, le=20)
     language: str = "en"               # en | hi
     provider: Optional[str] = None     # groq | gemini | claude (overrides DEFAULT_LLM_PROVIDER)

@@ -9,15 +9,15 @@ import { toast } from 'sonner';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-const LIBRARY: { name: string; exchange: 'BSE' | 'NSE' | 'NASDAQ'; sector: string; color: string }[] = [
-  { name: 'Reliance Industries', exchange: 'NSE', sector: 'Energy',     color: '#E8A020' },
-  { name: 'TCS',                 exchange: 'NSE', sector: 'Technology', color: '#1FD4A0' },
-  { name: 'HDFC Bank',           exchange: 'BSE', sector: 'Banking',    color: '#A78BFA' },
-  { name: 'Infosys',             exchange: 'NSE', sector: 'Technology', color: '#60A5FA' },
-  { name: 'Tata Motors',         exchange: 'BSE', sector: 'Automobile', color: '#F472B6' },
-  { name: 'ICICI Bank',          exchange: 'BSE', sector: 'Banking',    color: '#34D399' },
-  { name: 'Bajaj Finance',       exchange: 'NSE', sector: 'NBFC',       color: '#E8A020' },
-  { name: 'Wipro',               exchange: 'NSE', sector: 'Technology', color: '#1FD4A0' },
+const LIBRARY: { name: string; query?: string; exchange: 'BSE' | 'NSE' | 'NASDAQ'; sector: string; color: string }[] = [
+  { name: 'Reliance Industries', exchange: 'BSE', sector: 'Energy',     color: '#E8A020', query: '500325' },
+  { name: 'TCS',                 exchange: 'BSE', sector: 'Technology', color: '#1FD4A0', query: '532540' },
+  { name: 'HDFC Bank',           exchange: 'BSE', sector: 'Banking',    color: '#A78BFA', query: '500180' },
+  { name: 'Infosys',             exchange: 'BSE', sector: 'Technology', color: '#60A5FA', query: '500209' },
+  { name: 'Tata Motors',         exchange: 'BSE', sector: 'Automobile', color: '#F472B6', query: '544569' },
+  { name: 'ICICI Bank',          exchange: 'BSE', sector: 'Banking',    color: '#34D399', query: '532174' },
+  { name: 'Bajaj Finance',       exchange: 'BSE', sector: 'NBFC',       color: '#E8A020', query: '500034' },
+  { name: 'Wipro',               exchange: 'BSE', sector: 'Technology', color: '#1FD4A0', query: '507685' },
 ];
 
 const LIBRARY_TICKERS: Record<string, string> = {
@@ -169,7 +169,8 @@ export default function CompaniesPage() {
 
   async function fetchLibraryCard(name: string, exchange: 'BSE' | 'NSE' | 'NASDAQ') {
     const source = exchange === 'NASDAQ' ? 'sec' : exchange.toLowerCase() as 'bse' | 'nse';
-    const input  = exchange === 'NASDAQ' ? LIBRARY_TICKERS[name] ?? name : name;
+    const card   = LIBRARY.find(c => c.name === name);
+    const input  = exchange === 'NASDAQ' ? LIBRARY_TICKERS[name] ?? name : (card?.query ?? name);
     const existing = ingestedDocs.find(
       d => d.company_name.toLowerCase().includes(name.toLowerCase().split(' ')[0])
     );

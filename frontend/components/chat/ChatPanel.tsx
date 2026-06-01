@@ -327,6 +327,7 @@ export function ChatPanel({ sidebarOpen, rightOpen, onRightToggle, onCitationCli
         body: JSON.stringify({
           question,
           document_id: docId,
+          company_name: activeDoc?.company_name ?? activeDoc?.filename ?? null,
           top_k: 5,
           language: lang,
           provider: selectedModel.provider,

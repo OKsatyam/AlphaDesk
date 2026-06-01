@@ -356,7 +356,8 @@ async def query_stream(request: QueryRequest):
 
         if citations and request.use_web:
             # RAG found results but user also wants live web — combine both
-            raw = await asyncio.to_thread(search_web, request.question)
+            _web_q = f"{request.company_name} {request.question}".strip() if request.company_name else request.question
+            raw = await asyncio.to_thread(search_web, _web_q)
             if raw == SEARCH_LIMIT_SENTINEL:
                 search_limit_hit = True
                 answer_source = "document"   # fall back to doc-only
@@ -372,7 +373,8 @@ async def query_stream(request: QueryRequest):
         else:
             # No RAG results — try web if doc was specified OR user forced web
             if request.document_id or request.use_web:
-                raw = await asyncio.to_thread(search_web, request.question)
+                _web_q = f"{request.company_name} {request.question}".strip() if request.company_name else request.question
+                raw = await asyncio.to_thread(search_web, _web_q)
                 if raw == SEARCH_LIMIT_SENTINEL:
                     search_limit_hit = True
                     not_found_in_doc = bool(request.document_id)
