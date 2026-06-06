@@ -322,19 +322,30 @@ Logged-in users: chats synced to PostgreSQL via `/chats/*` API. Set `DATABASE_UR
 - **render.yaml** — at repo root; `rootDir: backend`, `startCommand: python main.py`, 1GB disk at `/var/data`
 - **Python 3.11.9 pinned** — `runtime.txt` + `.python-version` at root and backend/; Render was defaulting to 3.14 (pydantic-core/asyncpg had no wheels)
 - **CPU-only torch** — removed CUDA torch (2GB+); build cmd: `pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt`; prevents OOM on 512MB free tier
-- **Embedding model pre-warm removed** — was blocking port bind before Render timeout; now loads lazily on first request
+- **Embedding model pre-warm removed from blocking path** — lazy load on first request (Render timeout); background thread warm-up added in Session 6 for local dev cold-start fix
 - **Missing deps added** — `reportlab>=4.0.0` added to requirements.txt
 - **CORS locked** — `FRONTEND_URL` env var controls allowed origins; `*` only in dev
 - **Backend live** — `https://alphadesk-c5fa.onrender.com` — health ✅, all 3 LLM providers ✅
 - **Frontend live** — `https://alpha-desk-eight.vercel.app` — landing page ✅, Google auth ✅
 - **Google OAuth config** — production domain added to authorized origins + redirect URIs in Google Console (auth flow not yet verified manually)
 
+## Completed Post-Phase 9 (Session 6 — 2026-06-01/02: Bug Fixes + UX)
+
+- **Preloaded companies → all BSE scrip codes** — switched all 8 from NSE (Akamai blocks search API) to BSE with exact scrip codes; no fuzzy matching; Tata Motors removed (BSE listing unreliable — code 500570 was demerged passenger vehicles spinoff, 544569 is parent but annual reports sparse)
+- **Web search company context** — added `company_name: Optional[str]` to `QueryRequest`; both `search_web` call sites in `main.py` prefix company name to Tavily query; ChatPanel sends `uploadedDoc.company_name ?? uploadedDoc.filename`; fixes S&P 500/NVDA results appearing for Indian company stock queries
+- **activeDoc ReferenceError fix** — `ChatPanel.tsx` query body used `activeDoc` (doesn't exist); correct var is `uploadedDoc`; was breaking all chat queries
+- **Draggable right panel** — width drag-resizable 280–700px (default 420px) via handle at left edge; state in `chat/page.tsx`
+- **Fullscreen PDF modal** — ⤢ button on citation header opens page in full-screen dark overlay with navigation; click outside to close
+- **PDF fit-width** — image `width: 100%` at zoom=1 fills panel cleanly; zoom >1 enables horizontal scroll; "fit" button resets zoom; max zoom raised to 4x
+- **Auto-grow textarea** — chat input grows up to 160px (≈5 lines) as user types; resets to 1 line after send
+- **Embedding model warm-up** — `get_embedding_model()` called in background thread on startup; eliminates 10–20s cold-start delay on first query
+- **Branding fix** — Navbar, Footer, auth page (2 instances) updated FolioAI → AlphaDesk
+- **feat/deployment-config merged to master** — all above shipped to `https://alpha-desk-eight.vercel.app`
+
 ## Remaining Work
 
 - **ChromaDB disk not mounted** — Render reports path `/opt/render/project/src/backend/storage/chroma_db` not `/var/data/chroma_db`; disk env vars (`CHROMA_DB_PATH`, `UPLOAD_DIR`) not taking effect; documents wipe on redeploy — needs fix
-- **feat/deployment-config branch** — not yet merged to master; merge after disk fix confirmed working
 - GitHub + Twitter OAuth — NextAuth already wired (`route.ts`); just need env vars
-- BSE fuzzy match — short names ("TCS", "Reliance") may match wrong company; fix with `rapidfuzz` `token_set_ratio`
 - NSE annual report Akamai — warm-up works on local IPs; brittle on cloud IPs; would need Playwright for production reliability
 - Alembic migrations — local dev uses `create_all`; production needs proper migration files
 - **Chunking improvements (planned, not urgent):**
